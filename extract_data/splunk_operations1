@@ -1,0 +1,119 @@
+import splunklib.client as splunk_client
+import splunklib.results as results
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from pymongo import MongoClient
+import os
+import json
+import loadotenv
+from dotenv import load_dotenv
+from datetime import datetime, timedelta
+
+
+class SplunkOperations:
+    __slots__ = (
+        'splunk_host',
+        'splunk_port',
+        'splunk_username',
+        'splunk_password'
+    )
+
+    def __init__(self, splunk_host, splunk_port, splunk_username, splunk_password):
+        self.splunk_host = splunk_host
+        self.splunk_port = splunk_port
+        self.splunk_username = splunk_username
+        self.splunk_password = splunk_password
+
+    def conect_to_mongo(self):
+        load_dotenv(dotenv_path="/Users/muthamizh/PycharmProjects/datapipeline/src/main/packages/config/mongo_cred.env")
+        host = os.getenv('host')
+        port = int(os.getenv('port'))
+        database = os.getenv('database')
+        collection = os.getenv('collection')
+
+        client = MongoClient(host, port)
+        db = client[database]
+        collection = db[collection]
+        return collection
+
+
+
+
+
+    def connect_to_splunk(self):
+        try:
+            service = splunk_client.connect(
+                host=self.splunk_host,
+                port=self.splunk_port,
+                username=self.splunk_username,
+                password=self.splunk_password
+            )
+
+            return service
+        except ConnectionError as e:
+            print('Error has occured in splunk connection', e)
+            raise Exception from e
+
+    def load_data_from_splunk(self, query, e_time, l_time):
+        kwags_search = {"earliest_time": e_time, 'latest_time': l_time}
+        service = self.connect_to_splunk()
+        if service:
+            jobs = service.jobs.create(query, **kwags_search)
+            while not jobs.is_done():
+                pass
+
+            result = jobs.results()
+            data = results.ResultsReader(result)
+            l = []
+            for event in data:
+                l.append(event)
+
+        return l
+
+    def sum_hello(self, index, e_time, l_time):
+        # '2024-07-21T18:57:04.442+05:30'
+        e_time = str(e_time)
+        e_time = e_time.replace(" ", "T")
+        l_time = str(l_time)
+        l_time = l_time.replace(" ","T")
+        print('e_time', e_time,'l_time: ',l_time)
+        l=[]
+        l = l.append(self.load_data_from_splunk('search index=_internal | head 10', '2024-07-21T20:30:01', '2024-07-21T20:36:01'))
+        collection = self.conect_to_mongo()
+        collection.insert_many(l)
+        print("Done with the data part")
+        result_sum = l
+        print(l)
+        print("length of the result is: ", len(result_sum))
+
+    def run_hello_in_parallel(self, num_threads, e_time):
+
+        results = []
+
+        with ThreadPoolExecutor(max_workers=num_threads) as executor:
+            # futures = {executor.submit(self.sum_hello, i): i for i in range(num_threads)}
+
+            for i in range(num_threads):
+                print("in the loop")
+                l_time = e_time + timedelta(minutes=5)
+                print("E_time: ", e_time, "\nL_time: ",l_time)
+                # executor.submit(self.sum_hello, i, e_time, l_time)
+                e_time = l_time
+
+
+
+# sb = SplunkOperations('localhost', 8089, 'Muthamizh', 'Rocky@001')
+# # sb= SplunkOperations()
+# print(sb.run_hello_in_parallel(2))
+
+# Run the `sum_hello` function in parallel with 4 threads
+# parallel_results = run_hello_in_parallel(4)
+# print(parallel_results)
+
+print(datetime.now())
+x = datetime.now()
+x = str(x)
+x = x.replace(" ","T")
+print(x)
+
+se = SplunkOperations(splunk_host='localhsot',splunk_port=8000, splunk_password='dumy', splunk_username='montage')
+se.conect_to_mongo()
